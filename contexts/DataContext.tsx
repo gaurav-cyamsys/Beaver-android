@@ -41,6 +41,7 @@ interface DataContextType {
   saveSensor: (sensor: LocalSensor) => Promise<void>;
   uploadReadings: () => Promise<void>;
   saveReading: (reading: UARTData) => Promise<void>;
+  clearAllData: () => void;
 }
 
 const DataContext = createContext<DataContextType | undefined>(undefined);
@@ -244,6 +245,15 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
     }
   };
 
+  const clearAllData = () => {
+    console.log('Clearing all data from context state');
+    setSensors([]);
+    setCurrentSensorState(null);
+    setCurrentReading(null);
+    setLastReadingTime(null);
+    setIsReceivingData(false);
+  };
+
   useEffect(() => {
     if (!isFetching) {
       setIsReceivingData(false);
@@ -277,6 +287,7 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
         saveSensor,
         uploadReadings,
         saveReading,
+        clearAllData,
       }}
     >
       {children}

@@ -16,7 +16,7 @@ import { useData } from '../../contexts/DataContext';
 
 export default function Settings() {
   const { colors, theme, toggleTheme } = useTheme();
-  const { loadSensors, setCurrentSensor } = useData();
+  const { loadSensors, setCurrentSensor, clearAllData } = useData();
   const [settings, setSettings] = useState<AppSettings>({
     autoUpload: false,
     temperatureUnit: 'C',
@@ -63,8 +63,7 @@ export default function Settings() {
           style: 'destructive',
           onPress: async () => {
             await storageService.clearAll();
-            await setCurrentSensor(null);
-            await loadSensors();
+            clearAllData();
             await loadSettings();
             Alert.alert('Success', 'Factory reset completed. All sensors and readings have been deleted.');
           },
