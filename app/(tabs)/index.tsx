@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import {
   View,
   Text,
@@ -11,7 +11,7 @@ import {
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Wifi, WifiOff, Battery, Activity } from 'lucide-react-native';
-import { useRouter } from 'expo-router';
+import { useRouter, useFocusEffect } from 'expo-router';
 import { useData } from '../../contexts/DataContext';
 import { useTheme } from '../../contexts/ThemeContext';
 import { CalculationService } from '../../services/calculationService';
@@ -33,6 +33,7 @@ export default function Dashboard() {
     stopFetching,
     setCurrentSensor,
     uploadReadings,
+    loadSensors,
   } = useData();
 
   const [sensorModalVisible, setSensorModalVisible] = useState(false);
@@ -42,6 +43,12 @@ export default function Dashboard() {
   useEffect(() => {
     loadSettings();
   }, []);
+
+  useFocusEffect(
+    useCallback(() => {
+      loadSensors();
+    }, [loadSensors])
+  );
 
   const loadSettings = async () => {
     const settings = await storageService.getSettings();
