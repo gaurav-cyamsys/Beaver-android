@@ -147,9 +147,15 @@ class UARTService {
     return this.isFetching;
   }
 
-  setMockMode(enabled: boolean): void {
+  async setMockMode(enabled: boolean): Promise<void> {
     console.log('UART: Mock mode', enabled ? 'enabled' : 'disabled');
+    const wasConnected = this.isConnected;
     this.useMockData = enabled;
+
+    if (wasConnected) {
+      await this.disconnect();
+      await this.connect();
+    }
   }
 
   isMockMode(): boolean {

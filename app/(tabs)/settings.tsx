@@ -16,7 +16,7 @@ import { useData } from '../../contexts/DataContext';
 
 export default function Settings() {
   const { colors, theme, toggleTheme } = useTheme();
-  const { loadSensors, setCurrentSensor, clearAllData } = useData();
+  const { loadSensors, setCurrentSensor, clearAllData, isFetching, stopFetching } = useData();
   const [settings, setSettings] = useState<AppSettings>({
     autoUpload: false,
     temperatureUnit: 'C',
@@ -91,14 +91,23 @@ export default function Settings() {
             </View>
             <Switch
               value={mockMode}
-              onValueChange={(value) => {
+              onValueChange={async (value) => {
+                if (isFetching) {
+                  Alert.alert(
+                    'Stop Data Fetch',
+                    'Please stop the current data fetch before changing mock mode.',
+                    [{ text: 'OK' }]
+                  );
+                  return;
+                }
+
                 setMockMode(value);
-                uartService.setMockMode(value);
+                await uartService.setMockMode(value);
                 Alert.alert(
                   'Mock Mode ' + (value ? 'Enabled' : 'Disabled'),
                   value
                     ? 'App will generate dummy data every 2 seconds when you press Fetch'
-                    : 'App will now use real UART hardware. Reconnect required.'
+                    : 'App will now attempt to use real USB serial hardware. Make sure your device is connected.'
                 );
               }}
               trackColor={{ false: '#D1D5DB', true: '#93C5FD' }}
