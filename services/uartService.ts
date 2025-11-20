@@ -18,11 +18,17 @@ class UARTService {
     console.log('UART: Connecting... (Mock mode:', this.useMockData, ')');
 
     try {
-      if (this.useMockData || !RNSerialport) {
-        console.log('UART: Starting mock data generator for testing');
+      // If mock mode is enabled, just mark as connected (mock data starts on fetch)
+      if (this.useMockData) {
+        console.log('UART: Mock mode enabled, will generate dummy data on fetch');
         this.isConnected = true;
-        this.startMockData();
         return true;
+      }
+
+      // Real USB serial connection
+      if (!RNSerialport) {
+        console.warn('UART: USB Serial not available on this platform');
+        return false;
       }
 
       const devices = await this.listDevices();
@@ -44,7 +50,7 @@ class UARTService {
 
       this.isConnected = true;
       this.setupSerialListeners();
-      console.log('UART: Connected successfully');
+      console.log('UART: Connected to USB serial successfully');
 
       return true;
     } catch (error) {
@@ -91,13 +97,32 @@ class UARTService {
       if (command.Cmd === 'Send') {
         this.isFetching = true;
         console.log('UART: Fetch mode enabled, listeners count:', this.listeners.length);
+
+        // Start mock data generator ONLY if in mock mode
+        if (this.useMockData) {
+          console.log('UART: Starting mock data generator');
+          this.startMockData();
+        } else if (RNSerialport && this.devicePath) {
+          // Send real command to USB device
+          await RNSerialport.writeString(commandStr);
+          console.log('UART: Command sent to USB device');
+        }
       } else if (command.Cmd === 'Stop') {
         this.isFetching = false;
         console.log('UART: Fetch mode disabled');
-      }
 
-      if (RNSerialport && this.devicePath && !this.useMockData) {
-        await RNSerialport.writeString(commandStr);
+        // Stop mock data generator if running
+        if (this.mockDataInterval) {
+          clearInterval(this.mockDataInterval);
+          this.mockDataInterval = null;
+          console.log('UART: Mock data generator stopped');
+        }
+
+        // Send stop command to real device if connected
+        if (RNSerialport && this.devicePath && !this.useMockData) {
+          await RNSerialport.writeString(commandStr);
+          console.log('UART: Stop command sent to USB device');
+        }
       }
 
       return true;
@@ -120,14 +145,21 @@ class UARTService {
   }
 
   private startMockData() {
+    // Clear any existing interval first
     if (this.mockDataInterval) {
       clearInterval(this.mockDataInterval);
+    }
+
+    // Only start if in mock mode
+    if (!this.useMockData) {
+      console.log('UART: Not in mock mode, not starting generator');
+      return;
     }
 
     console.log('UART: Mock data generator started (Platform:', Platform.OS, ')');
 
     this.mockDataInterval = setInterval(() => {
-      if (this.isFetching) {
+      if (this.isFetching && this.useMockData) {
         const mockData: UARTData = {
           Freq: 1200 + Math.random() * 200,
           Temp: 25 + Math.random() * 5,
