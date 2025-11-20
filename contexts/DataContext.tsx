@@ -42,6 +42,7 @@ interface DataContextType {
   uploadReadings: () => Promise<void>;
   saveReading: (reading: UARTData) => Promise<void>;
   clearAllData: () => void;
+  updateConnectionStatus: () => void;
 }
 
 const DataContext = createContext<DataContextType | undefined>(undefined);
@@ -254,6 +255,12 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
     setIsReceivingData(false);
   };
 
+  const updateConnectionStatus = () => {
+    const connected = uartService.getConnectionStatus();
+    console.log('DataContext: Updating connection status to', connected);
+    setIsConnected(connected);
+  };
+
   useEffect(() => {
     if (!isFetching) {
       setIsReceivingData(false);
@@ -288,6 +295,7 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
         uploadReadings,
         saveReading,
         clearAllData,
+        updateConnectionStatus,
       }}
     >
       {children}

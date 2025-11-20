@@ -180,14 +180,17 @@ class UARTService {
   }
 
   async setMockMode(enabled: boolean): Promise<void> {
-    console.log('UART: Mock mode', enabled ? 'enabled' : 'disabled');
-    const wasConnected = this.isConnected;
+    console.log('UART: Switching mock mode from', this.useMockData, 'to', enabled);
+
+    // Always disconnect first (using old mode state)
+    await this.disconnect();
+
+    // Now update the mode
     this.useMockData = enabled;
 
-    if (wasConnected) {
-      await this.disconnect();
-      await this.connect();
-    }
+    // Always reconnect with new mode
+    const connected = await this.connect();
+    console.log('UART: Reconnected with mock mode', enabled, 'connected:', connected);
   }
 
   isMockMode(): boolean {

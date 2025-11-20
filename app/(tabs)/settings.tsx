@@ -16,7 +16,7 @@ import { useData } from '../../contexts/DataContext';
 
 export default function Settings() {
   const { colors, theme, toggleTheme } = useTheme();
-  const { loadSensors, setCurrentSensor, clearAllData, isFetching, stopFetching } = useData();
+  const { loadSensors, setCurrentSensor, clearAllData, isFetching, stopFetching, updateConnectionStatus } = useData();
   const [settings, setSettings] = useState<AppSettings>({
     autoUpload: false,
     temperatureUnit: 'C',
@@ -103,11 +103,16 @@ export default function Settings() {
 
                 setMockMode(value);
                 await uartService.setMockMode(value);
+                updateConnectionStatus();
+
+                const isNowConnected = uartService.getConnectionStatus();
                 Alert.alert(
                   'Mock Mode ' + (value ? 'Enabled' : 'Disabled'),
                   value
                     ? 'App will generate dummy data every 2 seconds when you press Fetch'
-                    : 'App will now attempt to use real USB serial hardware. Make sure your device is connected.'
+                    : isNowConnected
+                      ? 'Connected to USB serial hardware successfully!'
+                      : 'Failed to connect to USB serial hardware. Make sure your device is connected via OTG cable.'
                 );
               }}
               trackColor={{ false: '#D1D5DB', true: '#93C5FD' }}
