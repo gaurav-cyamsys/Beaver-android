@@ -5,16 +5,20 @@ class UARTService {
   private isConnected: boolean = false;
   private isFetching: boolean = false;
   private listeners: Array<(data: UARTData) => void> = [];
+  private mockDataInterval: ReturnType<typeof setInterval> | null = null;
+  private useMockData: boolean = true;
 
   async connect(): Promise<boolean> {
-    if (Platform.OS === 'web') {
-      console.warn('UART not available on web platform');
-      this.startMockData();
-      return true;
-    }
+    console.log('UART: Connecting... (Mock mode:', this.useMockData, ')');
 
     try {
       this.isConnected = true;
+
+      if (this.useMockData) {
+        console.log('UART: Starting mock data generator for testing');
+        this.startMockData();
+      }
+
       return true;
     } catch (error) {
       console.error('UART connection error:', error);
@@ -25,6 +29,11 @@ class UARTService {
   async disconnect(): Promise<void> {
     this.isConnected = false;
     this.isFetching = false;
+
+    if (this.mockDataInterval) {
+      clearInterval(this.mockDataInterval);
+      this.mockDataInterval = null;
+    }
   }
 
   async sendCommand(command: UARTCommand): Promise<boolean> {
@@ -65,10 +74,13 @@ class UARTService {
   }
 
   private startMockData() {
-    if (Platform.OS !== 'web') return;
+    if (this.mockDataInterval) {
+      clearInterval(this.mockDataInterval);
+    }
 
-    console.log('UART: Starting mock data generator for web platform');
-    setInterval(() => {
+    console.log('UART: Mock data generator started (Platform:', Platform.OS, ')');
+
+    this.mockDataInterval = setInterval(() => {
       if (this.isFetching) {
         const mockData: UARTData = {
           Freq: 1200 + Math.random() * 200,
@@ -87,6 +99,15 @@ class UARTService {
 
   getFetchingStatus(): boolean {
     return this.isFetching;
+  }
+
+  setMockMode(enabled: boolean): void {
+    console.log('UART: Mock mode', enabled ? 'enabled' : 'disabled');
+    this.useMockData = enabled;
+  }
+
+  isMockMode(): boolean {
+    return this.useMockData;
   }
 }
 

@@ -11,6 +11,7 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { storageService, AppSettings } from '../../services/storageService';
 import { useTheme } from '../../contexts/ThemeContext';
+import { uartService } from '../../services/uartService';
 
 export default function Settings() {
   const { colors, theme, toggleTheme } = useTheme();
@@ -20,9 +21,11 @@ export default function Settings() {
     theme: 'light',
     brightness: 80,
   });
+  const [mockMode, setMockMode] = useState(true);
 
   useEffect(() => {
     loadSettings();
+    setMockMode(uartService.isMockMode());
   }, []);
 
   useEffect(() => {
@@ -73,6 +76,34 @@ export default function Settings() {
       </View>
 
       <ScrollView style={styles.content}>
+        <View style={[styles.section, { backgroundColor: colors.surface, borderColor: colors.border }]}>
+          <Text style={[styles.sectionTitle, { color: colors.text }]}>Hardware</Text>
+
+          <View style={[styles.settingRow, { borderBottomColor: colors.input }]}>
+            <View style={styles.settingInfo}>
+              <Text style={[styles.settingLabel, { color: colors.textSecondary }]}>Mock Data Mode</Text>
+              <Text style={[styles.settingDescription, { color: colors.textTertiary }]}>
+                Generate dummy data for testing (disable when using real hardware)
+              </Text>
+            </View>
+            <Switch
+              value={mockMode}
+              onValueChange={(value) => {
+                setMockMode(value);
+                uartService.setMockMode(value);
+                Alert.alert(
+                  'Mock Mode ' + (value ? 'Enabled' : 'Disabled'),
+                  value
+                    ? 'App will generate dummy data every 2 seconds when you press Fetch'
+                    : 'App will now use real UART hardware. Reconnect required.'
+                );
+              }}
+              trackColor={{ false: '#D1D5DB', true: '#93C5FD' }}
+              thumbColor={mockMode ? '#3B82F6' : '#F3F4F6'}
+            />
+          </View>
+        </View>
+
         <View style={[styles.section, { backgroundColor: colors.surface, borderColor: colors.border }]}>
           <Text style={[styles.sectionTitle, { color: colors.text }]}>Data Sync</Text>
 
