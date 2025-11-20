@@ -1,8 +1,8 @@
-import { Platform, NativeModules, NativeEventEmitter } from 'react-native';
+import { Platform, NativeEventEmitter } from 'react-native';
+import { RNSerialport, actions } from 'react-native-usb-serialport';
 import type { UARTData, UARTCommand } from '../types/database';
 
-const { RNSerialport } = NativeModules;
-const serialportEmitter = RNSerialport ? new NativeEventEmitter(RNSerialport) : null;
+const serialportEmitter = RNSerialport ? new NativeEventEmitter(RNSerialport as any) : null;
 
 class UARTService {
   private isConnected: boolean = false;
@@ -13,22 +13,87 @@ class UARTService {
   private devicePath: string | null = null;
   private serialSubscriptions: any[] = [];
   private dataBuffer: string = '';
+  private isServiceStarted: boolean = false;
+
+  constructor() {
+    if (Platform.OS === 'android' && RNSerialport) {
+      this.initializeService();
+    }
+  }
+
+  private initializeService() {
+    if (!serialportEmitter) return;
+
+    console.log('UART: Initializing USB service...');
+
+    serialportEmitter.addListener(actions.ON_SERVICE_STARTED, (response: any) => {
+      console.log('UART: USB Service started', response);
+      this.isServiceStarted = true;
+    });
+
+    serialportEmitter.addListener(actions.ON_SERVICE_STOPPED, (response: any) => {
+      console.log('UART: USB Service stopped', response);
+      this.isServiceStarted = false;
+    });
+
+    serialportEmitter.addListener(actions.ON_DEVICE_ATTACHED, (response: any) => {
+      console.log('UART: Device attached', response);
+    });
+
+    serialportEmitter.addListener(actions.ON_DEVICE_DETACHED, (response: any) => {
+      console.log('UART: Device detached', response);
+    });
+
+    serialportEmitter.addListener(actions.ON_CONNECTED, (response: any) => {
+      console.log('UART: Device connected', response);
+      this.isConnected = true;
+      this.devicePath = response?.deviceName || this.devicePath;
+    });
+
+    serialportEmitter.addListener(actions.ON_DISCONNECTED, (response: any) => {
+      console.log('UART: Device disconnected', response);
+      if (response?.deviceName === this.devicePath) {
+        this.isConnected = false;
+        this.devicePath = null;
+      }
+    });
+
+    serialportEmitter.addListener(actions.ON_READ_DATA, (response: any) => {
+      if (response?.deviceName === this.devicePath && response?.data) {
+        const dataStr = String.fromCharCode.apply(null, response.data as any);
+        this.handleSerialData(dataStr);
+      }
+    });
+
+    serialportEmitter.addListener(actions.ON_ERROR, (error: any) => {
+      console.error('UART: Error', error);
+    });
+
+    try {
+      RNSerialport.startUsbService();
+    } catch (error) {
+      console.error('UART: Failed to start USB service', error);
+    }
+  }
 
   async connect(): Promise<boolean> {
     console.log('UART: Connecting... (Mock mode:', this.useMockData, ')');
 
     try {
-      // If mock mode is enabled, just mark as connected (mock data starts on fetch)
       if (this.useMockData) {
         console.log('UART: Mock mode enabled, will generate dummy data on fetch');
         this.isConnected = true;
         return true;
       }
 
-      // Real USB serial connection
-      if (!RNSerialport) {
+      if (!RNSerialport || Platform.OS !== 'android') {
         console.warn('UART: USB Serial not available on this platform');
         return false;
+      }
+
+      if (!this.isServiceStarted) {
+        console.log('UART: Waiting for USB service to start...');
+        await new Promise(resolve => setTimeout(resolve, 1000));
       }
 
       const devices = await this.listDevices();
@@ -37,22 +102,14 @@ class UARTService {
         return false;
       }
 
-      this.devicePath = devices[0].path;
+      this.devicePath = devices[0].name;
       console.log('UART: Found device:', this.devicePath);
 
-      await RNSerialport.open(this.devicePath, {
-        baudRate: 115200,
-        dataBits: 8,
-        stopBits: 1,
-        parity: 0,
-        flowControl: 0,
-      });
+      await RNSerialport.connectDevice(this.devicePath, 115200);
+      console.log('UART: Connection request sent, waiting for ON_CONNECTED event...');
 
-      this.isConnected = true;
-      this.setupSerialListeners();
-      console.log('UART: Connected to USB serial successfully');
-
-      return true;
+      await new Promise(resolve => setTimeout(resolve, 500));
+      return this.isConnected;
     } catch (error) {
       console.error('UART connection error:', error);
       return false;
@@ -60,7 +117,6 @@ class UARTService {
   }
 
   async disconnect(): Promise<void> {
-    this.isConnected = false;
     this.isFetching = false;
 
     if (this.mockDataInterval) {
@@ -68,18 +124,16 @@ class UARTService {
       this.mockDataInterval = null;
     }
 
-    this.serialSubscriptions.forEach((sub) => sub.remove());
-    this.serialSubscriptions = [];
-
-    if (RNSerialport && this.devicePath) {
+    if (RNSerialport && this.devicePath && !this.useMockData) {
       try {
-        await RNSerialport.close();
-        console.log('UART: Disconnected');
+        await RNSerialport.disconnectDevice(this.devicePath);
+        console.log('UART: Disconnected from', this.devicePath);
       } catch (error) {
         console.error('UART disconnect error:', error);
       }
     }
 
+    this.isConnected = false;
     this.devicePath = null;
     this.dataBuffer = '';
   }
@@ -98,29 +152,25 @@ class UARTService {
         this.isFetching = true;
         console.log('UART: Fetch mode enabled, listeners count:', this.listeners.length);
 
-        // Start mock data generator ONLY if in mock mode
         if (this.useMockData) {
           console.log('UART: Starting mock data generator');
           this.startMockData();
         } else if (RNSerialport && this.devicePath) {
-          // Send real command to USB device
-          await RNSerialport.writeString(commandStr);
-          console.log('UART: Command sent to USB device');
+          await RNSerialport.writeString(this.devicePath, commandStr);
+          console.log('UART: Command sent to USB device:', this.devicePath);
         }
       } else if (command.Cmd === 'Stop') {
         this.isFetching = false;
         console.log('UART: Fetch mode disabled');
 
-        // Stop mock data generator if running
         if (this.mockDataInterval) {
           clearInterval(this.mockDataInterval);
           this.mockDataInterval = null;
           console.log('UART: Mock data generator stopped');
         }
 
-        // Send stop command to real device if connected
         if (RNSerialport && this.devicePath && !this.useMockData) {
-          await RNSerialport.writeString(commandStr);
+          await RNSerialport.writeString(this.devicePath, commandStr);
           console.log('UART: Stop command sent to USB device');
         }
       }
@@ -145,12 +195,10 @@ class UARTService {
   }
 
   private startMockData() {
-    // Clear any existing interval first
     if (this.mockDataInterval) {
       clearInterval(this.mockDataInterval);
     }
 
-    // Only start if in mock mode
     if (!this.useMockData) {
       console.log('UART: Not in mock mode, not starting generator');
       return;
@@ -182,13 +230,9 @@ class UARTService {
   async setMockMode(enabled: boolean): Promise<void> {
     console.log('UART: Switching mock mode from', this.useMockData, 'to', enabled);
 
-    // Always disconnect first (using old mode state)
     await this.disconnect();
-
-    // Now update the mode
     this.useMockData = enabled;
 
-    // Always reconnect with new mode
     const connected = await this.connect();
     console.log('UART: Reconnected with mock mode', enabled, 'connected:', connected);
   }
@@ -198,39 +242,17 @@ class UARTService {
   }
 
   private async listDevices(): Promise<any[]> {
-    if (!RNSerialport) {
+    if (!RNSerialport || Platform.OS !== 'android') {
       return [];
     }
     try {
-      const devices = await RNSerialport.list();
+      const devices = await RNSerialport.getDeviceList();
       console.log('UART: Available devices:', devices);
-      return devices;
+      return devices || [];
     } catch (error) {
       console.error('UART: Error listing devices:', error);
       return [];
     }
-  }
-
-  private setupSerialListeners(): void {
-    if (!serialportEmitter) {
-      return;
-    }
-
-    const dataSubscription = serialportEmitter.addListener(
-      'usbSerialportData',
-      (data: { payload: string }) => {
-        this.handleSerialData(data.payload);
-      }
-    );
-
-    const errorSubscription = serialportEmitter.addListener(
-      'usbSerialportError',
-      (error: any) => {
-        console.error('UART: Serial port error:', error);
-      }
-    );
-
-    this.serialSubscriptions.push(dataSubscription, errorSubscription);
   }
 
   private handleSerialData(data: string): void {
@@ -262,6 +284,21 @@ class UARTService {
       }
     } catch (error) {
       console.warn('UART: Failed to parse JSON:', line, error);
+    }
+  }
+
+  cleanup() {
+    if (this.serialSubscriptions.length > 0) {
+      this.serialSubscriptions.forEach((sub) => sub.remove());
+      this.serialSubscriptions = [];
+    }
+
+    if (RNSerialport && Platform.OS === 'android') {
+      try {
+        RNSerialport.stopUsbService();
+      } catch (error) {
+        console.error('UART: Error stopping USB service', error);
+      }
     }
   }
 }
