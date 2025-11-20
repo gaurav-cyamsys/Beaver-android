@@ -1,5 +1,8 @@
-import { Platform } from 'react-native';
+import { Platform, NativeModules, NativeEventEmitter } from 'react-native';
 import type { UARTData, UARTCommand } from '../types/database';
+
+const { RNSerialport } = NativeModules;
+const serialportEmitter = RNSerialport ? new NativeEventEmitter(RNSerialport) : null;
 
 class UARTService {
   private isConnected: boolean = false;
@@ -7,17 +10,41 @@ class UARTService {
   private listeners: Array<(data: UARTData) => void> = [];
   private mockDataInterval: ReturnType<typeof setInterval> | null = null;
   private useMockData: boolean = true;
+  private devicePath: string | null = null;
+  private serialSubscriptions: any[] = [];
+  private dataBuffer: string = '';
 
   async connect(): Promise<boolean> {
     console.log('UART: Connecting... (Mock mode:', this.useMockData, ')');
 
     try {
-      this.isConnected = true;
-
-      if (this.useMockData) {
+      if (this.useMockData || !RNSerialport) {
         console.log('UART: Starting mock data generator for testing');
+        this.isConnected = true;
         this.startMockData();
+        return true;
       }
+
+      const devices = await this.listDevices();
+      if (devices.length === 0) {
+        console.warn('UART: No USB serial devices found');
+        return false;
+      }
+
+      this.devicePath = devices[0].path;
+      console.log('UART: Found device:', this.devicePath);
+
+      await RNSerialport.open(this.devicePath, {
+        baudRate: 115200,
+        dataBits: 8,
+        stopBits: 1,
+        parity: 0,
+        flowControl: 0,
+      });
+
+      this.isConnected = true;
+      this.setupSerialListeners();
+      console.log('UART: Connected successfully');
 
       return true;
     } catch (error) {
@@ -34,6 +61,21 @@ class UARTService {
       clearInterval(this.mockDataInterval);
       this.mockDataInterval = null;
     }
+
+    this.serialSubscriptions.forEach((sub) => sub.remove());
+    this.serialSubscriptions = [];
+
+    if (RNSerialport && this.devicePath) {
+      try {
+        await RNSerialport.close();
+        console.log('UART: Disconnected');
+      } catch (error) {
+        console.error('UART disconnect error:', error);
+      }
+    }
+
+    this.devicePath = null;
+    this.dataBuffer = '';
   }
 
   async sendCommand(command: UARTCommand): Promise<boolean> {
@@ -43,7 +85,7 @@ class UARTService {
     }
 
     try {
-      const commandStr = JSON.stringify(command);
+      const commandStr = JSON.stringify(command) + '\n';
       console.log('Sending UART command:', commandStr);
 
       if (command.Cmd === 'Send') {
@@ -52,6 +94,10 @@ class UARTService {
       } else if (command.Cmd === 'Stop') {
         this.isFetching = false;
         console.log('UART: Fetch mode disabled');
+      }
+
+      if (RNSerialport && this.devicePath && !this.useMockData) {
+        await RNSerialport.writeString(commandStr);
       }
 
       return true;
@@ -108,6 +154,74 @@ class UARTService {
 
   isMockMode(): boolean {
     return this.useMockData;
+  }
+
+  private async listDevices(): Promise<any[]> {
+    if (!RNSerialport) {
+      return [];
+    }
+    try {
+      const devices = await RNSerialport.list();
+      console.log('UART: Available devices:', devices);
+      return devices;
+    } catch (error) {
+      console.error('UART: Error listing devices:', error);
+      return [];
+    }
+  }
+
+  private setupSerialListeners(): void {
+    if (!serialportEmitter) {
+      return;
+    }
+
+    const dataSubscription = serialportEmitter.addListener(
+      'usbSerialportData',
+      (data: { payload: string }) => {
+        this.handleSerialData(data.payload);
+      }
+    );
+
+    const errorSubscription = serialportEmitter.addListener(
+      'usbSerialportError',
+      (error: any) => {
+        console.error('UART: Serial port error:', error);
+      }
+    );
+
+    this.serialSubscriptions.push(dataSubscription, errorSubscription);
+  }
+
+  private handleSerialData(data: string): void {
+    this.dataBuffer += data;
+
+    const lines = this.dataBuffer.split('\n');
+    this.dataBuffer = lines.pop() || '';
+
+    for (const line of lines) {
+      const trimmed = line.trim();
+      if (trimmed) {
+        this.parseAndNotify(trimmed);
+      }
+    }
+  }
+
+  private parseAndNotify(line: string): void {
+    try {
+      const parsed = JSON.parse(line);
+
+      if (parsed.Freq !== undefined && parsed.Temp !== undefined && parsed.Bat !== undefined) {
+        const uartData: UARTData = {
+          Freq: parsed.Freq,
+          Temp: parsed.Temp,
+          Bat: parsed.Bat,
+        };
+        console.log('UART: Parsed data:', uartData);
+        this.notifyListeners(uartData);
+      }
+    } catch (error) {
+      console.warn('UART: Failed to parse JSON:', line, error);
+    }
   }
 }
 
