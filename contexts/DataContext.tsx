@@ -32,6 +32,8 @@ interface DataContextType {
   isFetching: boolean;
   isOnline: boolean;
   sensors: LocalSensor[];
+  lastReadingTime: Date | null;
+  isReceivingData: boolean;
   setCurrentSensor: (sensor: LocalSensor | null) => Promise<void>;
   startFetching: () => Promise<void>;
   stopFetching: () => Promise<void>;
@@ -56,6 +58,8 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
   const [isFetching, setIsFetching] = useState(false);
   const [isOnline, setIsOnline] = useState(false);
   const [sensors, setSensors] = useState<LocalSensor[]>([]);
+  const [lastReadingTime, setLastReadingTime] = useState<Date | null>(null);
+  const [isReceivingData, setIsReceivingData] = useState(false);
 
   useEffect(() => {
     const unsubscribe = NetInfo.addEventListener((state) => {
@@ -75,6 +79,9 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
 
     const unsubscribe = uartService.onDataReceived((data) => {
       setCurrentReading(data);
+      setLastReadingTime(new Date());
+      setIsReceivingData(true);
+      console.log('Data received:', data);
       saveReading(data);
     });
 
@@ -96,16 +103,26 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
   };
 
   const startFetching = async () => {
+    console.log('Starting fetch command...');
     const success = await uartService.sendCommand({ Cmd: 'Send' });
     if (success) {
       setIsFetching(true);
+      setIsReceivingData(false);
+      console.log('Fetch command sent successfully');
+    } else {
+      console.error('Failed to send fetch command');
     }
   };
 
   const stopFetching = async () => {
+    console.log('Stopping fetch command...');
     const success = await uartService.sendCommand({ Cmd: 'Stop' });
     if (success) {
       setIsFetching(false);
+      setIsReceivingData(false);
+      console.log('Fetch stopped successfully');
+    } else {
+      console.error('Failed to stop fetch');
     }
   };
 
@@ -227,6 +244,21 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
     }
   };
 
+  useEffect(() => {
+    if (!isFetching) {
+      setIsReceivingData(false);
+      return;
+    }
+
+    const timeoutId = setTimeout(() => {
+      if (isFetching && !isReceivingData) {
+        console.warn('Fetch command active but no data received after 5 seconds');
+      }
+    }, 5000);
+
+    return () => clearTimeout(timeoutId);
+  }, [isFetching, isReceivingData]);
+
   return (
     <DataContext.Provider
       value={{
@@ -236,6 +268,8 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
         isFetching,
         isOnline,
         sensors,
+        lastReadingTime,
+        isReceivingData,
         setCurrentSensor,
         startFetching,
         stopFetching,

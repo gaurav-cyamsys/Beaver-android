@@ -27,6 +27,8 @@ export default function Dashboard() {
     isFetching,
     isOnline,
     sensors,
+    lastReadingTime,
+    isReceivingData,
     startFetching,
     stopFetching,
     setCurrentSensor,
@@ -106,6 +108,20 @@ export default function Dashboard() {
 
   const connectionStatus = currentReading && currentReading.Freq > 0 ? 'Connected' : 'Disconnected';
 
+  const getDataStatus = () => {
+    if (!isFetching) return null;
+    if (isReceivingData) return 'Receiving Data';
+    return 'Waiting for Data...';
+  };
+
+  const getTimeSinceLastReading = () => {
+    if (!lastReadingTime) return null;
+    const seconds = Math.floor((Date.now() - lastReadingTime.getTime()) / 1000);
+    if (seconds < 60) return `${seconds}s ago`;
+    const minutes = Math.floor(seconds / 60);
+    return `${minutes}m ago`;
+  };
+
   return (
     <SafeAreaView style={[styles.container, { backgroundColor: colors.background }]}>
       <View style={[styles.header, { backgroundColor: colors.headerBackground, borderBottomColor: colors.border }]}>
@@ -142,6 +158,20 @@ export default function Dashboard() {
             <Text style={[styles.statusText, { color: colors.textSecondary }]}>{battery !== null ? `${battery}%` : '-'}</Text>
           </View>
         </View>
+
+        {isFetching && (
+          <View style={[styles.dataStatusBar, { backgroundColor: isReceivingData ? '#ECFDF5' : '#FEF3C7', borderColor: isReceivingData ? '#10B981' : '#F59E0B' }]}>
+            <View style={[styles.dataStatusDot, { backgroundColor: isReceivingData ? '#10B981' : '#F59E0B' }]} />
+            <Text style={[styles.dataStatusText, { color: isReceivingData ? '#047857' : '#B45309' }]}>
+              {getDataStatus()}
+            </Text>
+            {lastReadingTime && (
+              <Text style={[styles.dataStatusTime, { color: isReceivingData ? '#059669' : '#D97706' }]}>
+                {getTimeSinceLastReading()}
+              </Text>
+            )}
+          </View>
+        )}
 
         <View style={styles.readingsGrid}>
           <View style={[styles.readingCard, { backgroundColor: colors.cardBackground, borderColor: colors.border }]}>
@@ -448,6 +478,29 @@ const styles = StyleSheet.create({
   },
   buttonTextDisabled: {
     color: '#9CA3AF',
+  },
+  dataStatusBar: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    padding: 12,
+    borderRadius: 12,
+    marginBottom: 16,
+    borderWidth: 1,
+    gap: 8,
+  },
+  dataStatusDot: {
+    width: 8,
+    height: 8,
+    borderRadius: 4,
+  },
+  dataStatusText: {
+    fontSize: 14,
+    fontWeight: '600',
+  },
+  dataStatusTime: {
+    fontSize: 12,
+    fontWeight: '500',
   },
   modalOverlay: {
     flex: 1,

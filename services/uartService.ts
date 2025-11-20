@@ -39,8 +39,10 @@ class UARTService {
 
       if (command.Cmd === 'Send') {
         this.isFetching = true;
+        console.log('UART: Fetch mode enabled, listeners count:', this.listeners.length);
       } else if (command.Cmd === 'Stop') {
         this.isFetching = false;
+        console.log('UART: Fetch mode disabled');
       }
 
       return true;
@@ -58,12 +60,14 @@ class UARTService {
   }
 
   private notifyListeners(data: UARTData) {
+    console.log('UART: Notifying listeners, count:', this.listeners.length, 'data:', data);
     this.listeners.forEach((callback) => callback(data));
   }
 
   private startMockData() {
     if (Platform.OS !== 'web') return;
 
+    console.log('UART: Starting mock data generator for web platform');
     setInterval(() => {
       if (this.isFetching) {
         const mockData: UARTData = {
@@ -71,6 +75,7 @@ class UARTService {
           Temp: 25 + Math.random() * 5,
           Bat: 85 + Math.floor(Math.random() * 15),
         };
+        console.log('UART: Generating mock data:', mockData);
         this.notifyListeners(mockData);
       }
     }, 2000);
