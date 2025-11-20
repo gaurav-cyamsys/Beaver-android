@@ -105,7 +105,13 @@ class UARTService {
       this.devicePath = devices[0].name;
       console.log('UART: Found device:', this.devicePath);
 
-      await RNSerialport.connectDevice(this.devicePath, 115200);
+      await RNSerialport.open(this.devicePath, {
+        baudRate: 115200,
+        dataBits: 8,
+        stopBits: 1,
+        parity: 0,
+        flowControl: 0,
+      });
       console.log('UART: Connection request sent, waiting for ON_CONNECTED event...');
 
       await new Promise(resolve => setTimeout(resolve, 500));
@@ -126,8 +132,8 @@ class UARTService {
 
     if (RNSerialport && this.devicePath && !this.useMockData) {
       try {
-        await RNSerialport.disconnectDevice(this.devicePath);
-        console.log('UART: Disconnected from', this.devicePath);
+        await RNSerialport.disconnect();
+        console.log('UART: Disconnected');
       } catch (error) {
         console.error('UART disconnect error:', error);
       }
@@ -156,7 +162,7 @@ class UARTService {
           console.log('UART: Starting mock data generator');
           this.startMockData();
         } else if (RNSerialport && this.devicePath) {
-          await RNSerialport.writeString(this.devicePath, commandStr);
+          await RNSerialport.writeString(commandStr);
           console.log('UART: Command sent to USB device:', this.devicePath);
         }
       } else if (command.Cmd === 'Stop') {
@@ -170,7 +176,7 @@ class UARTService {
         }
 
         if (RNSerialport && this.devicePath && !this.useMockData) {
-          await RNSerialport.writeString(this.devicePath, commandStr);
+          await RNSerialport.writeString(commandStr);
           console.log('UART: Stop command sent to USB device');
         }
       }
