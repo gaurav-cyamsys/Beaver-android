@@ -12,9 +12,11 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { storageService, AppSettings } from '../../services/storageService';
 import { useTheme } from '../../contexts/ThemeContext';
 import { uartService } from '../../services/uartService';
+import { useData } from '../../contexts/DataContext';
 
 export default function Settings() {
   const { colors, theme, toggleTheme } = useTheme();
+  const { loadSensors, setCurrentSensor } = useData();
   const [settings, setSettings] = useState<AppSettings>({
     autoUpload: false,
     temperatureUnit: 'C',
@@ -61,8 +63,10 @@ export default function Settings() {
           style: 'destructive',
           onPress: async () => {
             await storageService.clearAll();
-            Alert.alert('Success', 'Factory reset completed');
-            loadSettings();
+            await setCurrentSensor(null);
+            await loadSensors();
+            await loadSettings();
+            Alert.alert('Success', 'Factory reset completed. All sensors and readings have been deleted.');
           },
         },
       ]

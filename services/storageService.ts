@@ -105,11 +105,9 @@ class StorageService {
 
   async clearAll(): Promise<void> {
     try {
-      await AsyncStorage.multiRemove([
-        KEYS.SETTINGS,
-        KEYS.CURRENT_SENSOR,
-        KEYS.PENDING_READINGS,
-      ]);
+      const allKeys = await AsyncStorage.getAllKeys();
+      await AsyncStorage.multiRemove(allKeys);
+      console.log('All storage cleared, keys removed:', allKeys.length);
     } catch (error) {
       console.error('Error clearing storage:', error);
     }
